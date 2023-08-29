@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: magma
+spec:
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pgdata-pv
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 256Mi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/var/lib/postgresql/data"
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pgdata-pvc
+  namespace: magma
+  labels:
+    app: postgres
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 256Mi
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-deployment
+  namespace: magma
+  labels:
+    app: postgres
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:14 
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: magma_dev
+            - name: POSTGRES_PASSWORD
+              value: magma_dev
+            - name: POSTGRES_DB
+              value: magma_dev
+          args:
+            - "postgres"
+            - "-c"
+            - "log_duration=true"
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: pgdata-pvc

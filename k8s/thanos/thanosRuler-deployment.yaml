@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-ruler-service
+  namespace: magma
+spec:
+  selector:
+    app: thanos-ruler
+  ports:
+    - name: tcp-10903
+      protocol: TCP
+      port: 10903
+      targetPort: 10902
+  type: ClusterIP
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thanos-ruler
+  namespace: magma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: thanos-ruler
+  template:
+    metadata:
+      labels:
+        app: thanos-ruler
+    spec:
+      containers:
+        - name: thanos-ruler
+          image: thanosio/thanos:master-2020-09-30-e4941a5c
+          args:
+            - "rule"
+            - "--eval-interval=30s"
+            - "--rule-file=/etc/configs/alert_rules/*"
+            - "--alertmanagers.url=http://alertmanager:9093"
+            - "--query=http://thanosQuery:19192"
+            - "--objstore.config-file=/etc/thanos/objstore.yml"
+          ports:
+            - containerPort: 10902
+          volumeMounts:
+            - name: thanos-config
+              mountPath: /etc/thanos
+            - name: alert-rules-config
+              mountPath: /etc/configs/alert_rules
+      volumes:
+        - name: thanos-config
+          configMap:
+            name: thanos-config
+        - name: alert-rules-config
+          hostPath:
+            path: /etc/configs/alert_rules

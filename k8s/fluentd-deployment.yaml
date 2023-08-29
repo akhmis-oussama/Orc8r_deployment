@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluentd
+spec:
+  selector:
+    app: fluentd
+  ports:
+    - name: fluentd-tcp
+      protocol: TCP
+      port: 24224
+      targetPort: 24224
+    - name: fluentd-udp
+      protocol: UDP
+      port: 24224
+      targetPort: 24224
+    - name: fluentd-tcp-secure
+      protocol: TCP
+      port: 24225
+      targetPort: 24225
+    - name: fluentd-udp-secure
+      protocol: UDP
+      port: 24225
+      targetPort: 24225
+  type: ClusterIP
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluentd
+  namespace: magma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fluentd
+  template:
+    metadata:
+      labels:
+        app: fluentd
+    spec:
+      containers:
+        - name: fluentd
+          image: oakhmis/fluentd-image:latest
+          ports:
+            - containerPort: 24224
+            - containerPort: 24225
+          volumeMounts:
+            - name: conf-volume
+              mountPath: /fluentd/conf
+            - name: certs-volume
+              mountPath: /var/opt/magma/certs
+            - name: fluentd-config 
+              mountPath: /fluentd-config
+      volumes:
+        - name: conf-volume
+          hostPath:
+            path: /var/opt/magma/conf
+        - name: certs-volume
+          hostPath:
+            path: /var/opt/magma/certs
+        - name: fluentd-config  
+          configMap:
+            name: fluentd-config
+

@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thanos-sidecar
+  namespace: magma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: thanos-sidecar
+  template:
+    metadata:
+      labels:
+        app: thanos-sidecar
+    spec:
+      volumes:
+        - name: prometheus-data
+          hostPath:
+            path: /home/oussama/prometheus-docker-data
+        - name: objstorage-data
+          hostPath:
+            path: /home/oussama/prometheus_objstore_data
+        - name: thanos-config
+          configMap:
+            name: thanos-config
+      containers:
+        - name: thanos-sidecar
+          image: thanosio/thanos:master-2020-09-30-e4941a5c
+          args:
+            - "sidecar"
+            - "--tsdb.path=/prometheus"
+            - "--prometheus.url=http://prometheus-service:9090"
+            - "--grpc-address=0.0.0.0:19090"
+            - "--objstore.config-file=/etc/thanos/objstore.yml"
+          ports:
+            - containerPort: 19090
+          volumeMounts:
+            - name: prometheus-data
+              mountPath: /prometheus
+            - name: objstorage-data
+              mountPath: /objstorage
+            - name: thanos-config
+              mountPath: /etc/thanos
+              readOnly: true
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-sidecar-service
+  namespace: magma
+spec:
+  selector:
+    app: thanos-sidecar
+  ports:
+    - name: tcp-19090
+      protocol: TCP
+      port: 19090
+      targetPort: 19090
+
+---
+
+---
+

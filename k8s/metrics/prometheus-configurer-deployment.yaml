@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-configurer
+  namespace: magma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-configurer
+  template:
+    metadata:
+      labels:
+        app: prometheus-configurer
+    spec:
+      containers:
+        - name: prometheus-configurer
+          image: facebookincubator/prometheus-configurer:1.0.0
+          args:
+            - '-port=9100'
+            - '-rules-dir=/etc/configs/alert_rules/'
+            - '-prometheusURL=prometheus:9090'
+            - '-multitenant-label=networkID'
+            - '-restrict-queries'
+          args:
+            - "-port=9100"
+            - "-rules-dir=/etc/configs/alert_rules/"
+            - "-prometheusURL=thanosRuler:10902"
+            - "-multitenant-label=networkID"
+            - "-restrict-queries"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/configs/alert_rules
+              readOnly: false
+      volumes:
+        - name: config-volume
+          configMap:
+            name: prometheus-config
+            items:
+              - key: prometheus.yml
+                path: prometheus.yml
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-configurer
+  namespace: magma
+spec:
+  selector:
+    app: prometheus-configurer
+  ports:
+    - protocol: TCP
+      port: 9100
+      targetPort: 9100

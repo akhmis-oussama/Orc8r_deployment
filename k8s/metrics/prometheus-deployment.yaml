@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-deployment
+  namespace: magma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.20.1
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus
+            - name: prometheus-storage
+              mountPath: /prometheus
+          args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--web.enable-lifecycle'
+            - '--storage.tsdb.min-block-duration=2h'
+            - '--storage.tsdb.max-block-duration=2h'
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config  
+        - name: prometheus-storage
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+  namespace: magma
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - name: tcp-9090
+      protocol: TCP
+      port: 9090
+      targetPort: 9090
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: prometheus-configmap
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval:     15s # By default, scrape targets every 15 seconds.
+      evaluation_interval: 15s # By default, scrape targets every 15 seconds.
+      external_labels:
+        monitor: 'master'
+
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      - job_name: "magma_pushgateway"
+        honor_labels: true
+        metric_relabel_configs:
+          - regex: 'job'
+            action: labeldrop
+          - regex: 'instance'
+            action: labeldrop
+        static_configs:
+          - targets: ['prometheus-cache:9091']
+      - job_name: "magma_pushgateway_stats"
+        metrics_path: '/internal'
+        static_configs:
+          - targets: ['prometheus-cache:9091']
+
+    rule_files:
+      - '/etc/prometheus/alert_rules/*_rules.yml'
+
+    alerting:
+      alertmanagers:
+        - scheme: http
+          static_configs:
+            - targets: ['alertmanager:9093']

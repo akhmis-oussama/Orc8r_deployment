@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-cache-deployment
+  namespace: magma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-cache
+  template:
+    metadata:
+      labels:
+        app: prometheus-cache
+    spec:
+      containers:
+        - name: prometheus-cache
+          image: facebookincubator/prometheus-edge-hub:1.1.0
+          ports:
+            - containerPort: 9091
+            - containerPort: 9092
+          args:
+            - '-limit=500000'
+            - '-grpc-port=9092'
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-cache-service
+  namespace: magma
+spec:
+  selector:
+    app: prometheus-cache
+  ports:
+    - name: tcp-9091
+      protocol: TCP
+      port: 9091
+      targetPort: 9091
+    - name: tcp-9092
+      protocol: TCP
+      port: 9092
+      targetPort: 9092

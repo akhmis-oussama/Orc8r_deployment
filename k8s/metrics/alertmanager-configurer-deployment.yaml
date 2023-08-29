@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager-configurer
+  namespace: magma
+spec:
+  selector:
+    app: alertmanager-configurer
+  ports:
+    - protocol: TCP
+      port: 9101
+      targetPort: 9101
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager-configurer
+  namespace: magma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager-configurer
+  template:
+    metadata:
+      labels:
+        app: alertmanager-configurer
+    spec:
+      containers:
+        - name: alertmanager-configurer
+          image: facebookincubator/alertmanager-configurer:1.0.0
+          args:
+            - '-port=9101'
+            - '-alertmanager-conf=/etc/configs/alertmanager.yml'
+            - '-alertmanagerURL=alertmanager:9093'
+            - '-multitenant-label=networkID'
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/configs
+      volumes:
+        - name: config-volume
+          configMap:
+            name: alertmanager-config  

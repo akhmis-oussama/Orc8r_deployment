@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-test
+  namespace: magma
+spec:
+  serviceName: "postgres"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-test
+  template:
+    metadata:
+      labels:
+        app: postgres-test
+    spec:
+      containers:
+        - name: postgres-test
+          image: postgres
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: magma_test
+            - name: POSTGRES_PASSWORD
+              value: magma_test
+            - name: POSTGRES_DB
+              value: magma_test
+          args:
+            - "postgres"
+            - "-c"
+            - "log_duration=true"
+            - "-c"
+            - "log_statement=all"
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi  # adjust as needed
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: magma
+spec:
+  selector:
+    app: postgres-test
+  ports:
+    - name: tcp-5432
+      protocol: TCP
+      port: 5432
+      targetPort: 5432

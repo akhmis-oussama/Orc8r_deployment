@@ -1,0 +1,368 @@
+name: orc8r
+services:
+  alertmanager:
+    image: prom/alertmanager
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 9093
+      published: "9093"
+      protocol: tcp
+    restart: always
+    volumes:
+    - type: bind
+      source: /home/oussama/magma/orc8r/cloud/docker/../../../orc8r/cloud/docker/metrics-configs
+      target: /etc/alertmanager
+      read_only: true
+      bind:
+        create_host_path: true
+  alertmanager-configurer:
+    command:
+    - -port=9101
+    - -alertmanager-conf=/etc/configs/alertmanager.yml
+    - -alertmanagerURL=alertmanager:9093
+    - -multitenant-label=networkID
+    image: facebookincubator/alertmanager-configurer:1.0.0
+    networks:
+      default: null
+    restart: always
+    volumes:
+    - type: bind
+      source: /home/oussama/magma/orc8r/cloud/docker/../../../orc8r/cloud/docker/metrics-configs
+      target: /etc/configs
+      bind:
+        create_host_path: true
+  controller:
+    build:
+      context: /tmp/magma_orc8r_build
+      dockerfile: /home/oussama/magma/orc8r/cloud/docker/controller/Dockerfile
+    command:
+    - /bin/sh
+    - -c
+    - /usr/local/bin/wait-for-it.sh -s -t 30 postgres:5432 && /usr/bin/supervisord
+    depends_on:
+      fluentd:
+        condition: service_started
+      postgres:
+        condition: service_started
+    environment:
+      DATABASE_SOURCE: dbname=magma_dev user=magma_dev password=magma_dev host=postgres
+        sslmode=disable
+      HELM_VERSION_TAG: LOCAL-DEV
+      MAGMA_PRINT_GRPC_PAYLOAD: "0"
+      ORC8R_DOMAIN_NAME: magma.test
+      SERVICE_HOSTNAME: localhost
+      SERVICE_REGISTRY_MODE: yaml
+      SQL_DIALECT: psql
+      SQL_DRIVER: postgres
+      TEST_MODE: "1"
+      VERSION_TAG: LOCAL-DEV
+    links:
+    - fluentd
+    networks:
+      default: null
+    platform: linux/x86_64
+    restart: always
+    volumes:
+    - type: bind
+      source: /home/oussama/magma/orc8r/cloud/docker/controller/supervisord.conf
+      target: /etc/supervisor/conf.d/supervisord.conf
+      bind:
+        create_host_path: true
+    - type: bind
+      source: /home/oussama/magma/orc8r/cloud/docker/../../../.cache/test_certs
+      target: /var/opt/magma/certs
+      bind:
+        create_host_path: true
+  elasticsearch:
+    container_name: elasticsearch
+    environment:
+      discovery.type: single-node
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.3.1
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 9200
+      published: "9200"
+      protocol: tcp
+    - mode: ingress
+      target: 9300
+      published: "9300"
+      protocol: tcp
+    restart: always
+    volumes:
+    - type: volume
+      source: elasticsearch
+      target: /usr/share/elasticsearch/data
+      volume: {}
+  fluentd:
+    build:
+      context: /home/oussama/magma/orc8r/cloud/docker/fluentd
+      dockerfile: Dockerfile
+    container_name: fluentd
+    depends_on:
+      elasticsearch:
+        condition: service_started
+        restart: true
+    links:
+    - elasticsearch
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 24224
+      published: "24224"
+      protocol: tcp
+    - mode: ingress
+      target: 24224
+      published: "24224"
+      protocol: udp
+    - mode: ingress
+      target: 24225
+      published: "24225"
+      protocol: tcp
+    - mode: ingress
+      target: 24225
+      published: "24225"
+      protocol: udp
+    volumes:
+    - type: bind
+      source: /home/oussama/magma/orc8r/cloud/docker/fluentd/conf
+      target: /fluentd/etc
+      bind:
+        create_host_path: true
+    - type: bind
+      source: /home/oussama/magma/orc8r/cloud/docker/../../../.cache/test_certs
+      target: /var/opt/magma/certs
+      bind:
+        create_host_path: true
+  kibana:
+    depends_on:
+      elasticsearch:
+        condition: service_started
+        restart: true
+    image: docker.elastic.co/kibana/kibana:7.3.1
+    links:
+    - elasticsearch
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 5601
+      published: "5601"
+      protocol: tcp
+  maria:
+    command:
+    - mysqld
+    - --sql_mode=ANSI_QUOTES
+    environment:
+      MYSQL_DATABASE: magma_dev
+      MYSQL_PASSWORD: magma_dev
+      MYSQL_ROOT_PASSWORD: magma
+      MYSQL_USER: magma_dev
+      SQL_MODE: ANSI_QUOTES
+    image: mariadb:10.2
+    networks:
+      default: null
+    restart: always
+    volumes:
+    - type: volume
+      source: mysql
+      target: /var/lib/mysql
+      volume: {}
+  nginx:
+    build:
+      context: /tmp/magma_orc8r_build
+      dockerfile: /home/oussama/magma/orc8r/cloud/docker/nginx/Dockerfile
+    depends_on:
+      controller:
+        condition: service_started
+    environment:
+      CONTROLLER_HOSTNAME: controller.magma.test
+      PROXY_BACKENDS: controller
+      RESOLVER: 127.0.0.11
+      SERVICE_REGISTRY_MODE: yaml
+      SSL_CERTIFICATE: /var/opt/magma/certs/controller.crt
+      SSL_CERTIFICATE_KEY: /var/opt/magma/certs/controller.key
+      SSL_CLIENT_CERTIFICATE: /var/opt/magma/certs/certifier.pem
+      TEST_MODE: "1"
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 8443
+      published: "7443"
+      protocol: tcp
+    - mode: ingress
+      target: 8444
+      published: "7444"
+      protocol: tcp
+    - mode: ingress
+      target: 9443
+      published: "9443"
+      protocol: tcp
+    restart: always
+    volumes:
+    - type: bind
+      source: /home/oussama/magma/orc8r/cloud/docker/../../../.cache/test_certs
+      target: /var/opt/magma/certs
+      bind:
+        create_host_path: true
+  postgres:
+    command:
+    - postgres
+    - -c
+    - log_duration=true
+    environment:
+      POSTGRES_DB: magma_dev
+      POSTGRES_PASSWORD: magma_dev
+      POSTGRES_USER: magma_dev
+    image: postgres:14
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 5432
+      published: "5432"
+      protocol: tcp
+    restart: always
+    shm_size: "268435456"
+    volumes:
+    - type: volume
+      source: pgdata
+      target: /var/lib/postgresql/data
+      volume: {}
+  postgres_test:
+    command:
+    - postgres
+    - -c
+    - log_duration=true
+    - -c
+    - log_statement=all
+    environment:
+      POSTGRES_DB: magma_test
+      POSTGRES_PASSWORD: magma_test
+      POSTGRES_USER: magma_test
+    image: postgres
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 5432
+      published: "5433"
+      protocol: tcp
+    restart: always
+  prometheus:
+    command:
+    - --config.file=/etc/prometheus/prometheus.yml
+    - --storage.tsdb.path=/prometheus
+    - --web.enable-lifecycle
+    image: prom/prometheus:v2.20.1
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 9090
+      published: "9090"
+      protocol: tcp
+    restart: always
+    volumes:
+    - type: bind
+      source: /home/oussama/magma/orc8r/cloud/docker/../../../orc8r/cloud/docker/metrics-configs
+      target: /etc/prometheus
+      read_only: true
+      bind:
+        create_host_path: true
+  prometheus-cache:
+    command:
+    - -limit=500000
+    - -grpc-port=9092
+    image: facebookincubator/prometheus-edge-hub:1.1.0
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 9091
+      published: "9091"
+      protocol: tcp
+    - mode: ingress
+      target: 9092
+      published: "9092"
+      protocol: tcp
+    restart: always
+  prometheus-configurer:
+    command:
+    - -port=9100
+    - -rules-dir=/etc/configs/alert_rules/
+    - -prometheusURL=prometheus:9090
+    - -multitenant-label=networkID
+    - -restrict-queries
+    image: facebookincubator/prometheus-configurer:1.0.0
+    networks:
+      default: null
+    restart: always
+    volumes:
+    - type: bind
+      source: /home/oussama/magma/orc8r/cloud/docker/../../../orc8r/cloud/docker/metrics-configs
+      target: /etc/configs
+      bind:
+        create_host_path: true
+  test:
+    build:
+      context: /tmp/magma_orc8r_build
+      dockerfile: /home/oussama/magma/orc8r/cloud/docker/controller/Dockerfile
+      target: src
+    command:
+    - echo Hello World!
+    depends_on:
+      postgres_test:
+        condition: service_started
+    entrypoint:
+    - /bin/bash
+    - -lc
+    networks:
+      default: null
+    volumes:
+    - type: bind
+      source: /home/oussama/magma/orc8r/cloud/docker/../../../nms
+      target: /src/magma/nms
+      bind:
+        create_host_path: true
+    working_dir: /src/magma/orc8r/cloud
+  user-grafana:
+    environment:
+      GF_AUTH_PROXY_AUTO_SIGN_UP: "false"
+      GF_AUTH_PROXY_ENABLED: "true"
+      GF_AUTH_PROXY_HEADER_NAME: X-WEBAUTH-USER
+      GF_AUTH_PROXY_HEADER_PROPERTY: username
+      GF_SERVER_ROOT_URL: /grafana
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_AUTO_ASSIGN_ORG: "false"
+    image: grafana/grafana:6.6.2
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 3000
+      published: "3000"
+      protocol: tcp
+    restart: always
+    volumes:
+    - type: volume
+      source: userGrafanaData
+      target: /var/lib/grafana
+      volume: {}
+networks:
+  default:
+    name: orc8r_default
+volumes:
+  elasticsearch:
+    name: orc8r_elasticsearch
+  mysql:
+    name: orc8r_mysql
+  pgdata:
+    name: orc8r_pgdata
+  userGrafanaData:
+    name: orc8r_userGrafanaData

@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-grafana
+  namespace: magma
+spec:
+  selector:
+    app: user-grafana
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+  type: LoadBalancer  
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: user-grafana-data
+  namespace: magma
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi  
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: user-grafana-pv
+  namespace: magma
+spec:
+  capacity:
+    storage: 10Gi  
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain  
+  storageClassName: manual  
+  hostPath:
+    path: /path/to/host/folder  
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-grafana
+  namespace: magma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-grafana
+  template:
+    metadata:
+      labels:
+        app: user-grafana
+    spec:
+      containers:
+        - name: user-grafana
+          image: grafana/grafana:6.6.2
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - name: grafana-data
+              mountPath: /var/lib/grafana
+          env:
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_USERS_AUTO_ASSIGN_ORG
+              value: "false"
+            - name: GF_AUTH_PROXY_ENABLED
+              value: "true"
+            - name: GF_AUTH_PROXY_HEADER_NAME
+              value: "X-WEBAUTH-USER"
+            - name: GF_AUTH_PROXY_HEADER_PROPERTY
+              value: "username"
+            - name: GF_AUTH_PROXY_AUTO_SIGN_UP
+              value: "false"
+            - name: GF_SERVER_ROOT_URL
+              value: "/grafana"
+      volumes:
+        - name: grafana-data
+          persistentVolumeClaim:
+            claimName: user-grafana-data
